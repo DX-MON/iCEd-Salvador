@@ -13,6 +13,10 @@ def cli():
 	register_cli(parser = parser)
 	args = parser.parse_args()
 
+	if args.action == 'arachne-sim':
+		from .sim import runSims
+		runSims()
+		exit(0)
 
 	platform = SalvadorPlatform()
 	salvador = Salvador()
