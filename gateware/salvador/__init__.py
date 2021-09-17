@@ -14,8 +14,8 @@ def cli():
 	args = parser.parse_args()
 
 	if args.action == 'arachne-sim':
-		from .sim import runSims
-		runSims()
+		from arachne.core.sim import run_sims
+		run_sims(pkg = 'salvador/sim', result_dir = 'build')
 		exit(0)
 
 	platform = SalvadorPlatform()
