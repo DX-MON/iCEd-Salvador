@@ -3,7 +3,7 @@ from nmigen.sim import *
 
 from ...dali.serial import Serial
 
-__all__ = ('rxDALI', )
+__all__ = ('rxDALI', 'txDALI')
 
 class Platform:
 	@property
@@ -47,6 +47,48 @@ def rxDALI(sim : Simulator, dut):
 		yield from waitBitTime(16e6, dut._bitRate)
 		# Broadcast "Query Short Address"
 		yield from sendCommand(0b1111_1111_1001_0110, dut = dut, clkFreq = 16e6, bitRate = dut._bitRate)
+		yield
+		yield
+
+	yield domainSync, 'sync'
+
+def recvResponse(response, *, dut, clkFreq, bitRate):
+	# Signal to start sending
+	yield dut.dataIn.eq(response)
+	yield dut.dataSend.eq(1)
+	yield
+	yield dut.dataSend.eq(0)
+	yield
+	yield
+	# Check the dut generates the correct start bit
+	assert (yield dut.tx) == 0
+	yield from waitBitTime(clkFreq, bitRate)
+	assert (yield dut.tx) == 1
+	yield from waitBitTime(clkFreq, bitRate)
+	for i in range(8):
+		bit = (response >> (7 - i)) & 1
+		assert (yield dut.tx) == bit
+		yield from waitBitTime(clkFreq, bitRate)
+		assert (yield dut.tx) == bit ^ 1
+		yield from waitBitTime(clkFreq, bitRate)
+	# Stop bits
+	assert (yield dut.tx) == 1
+	yield from waitBitTime(clkFreq, bitRate)
+	yield from waitBitTime(clkFreq, bitRate)
+	yield from waitBitTime(clkFreq, bitRate)
+	yield from waitBitTime(clkFreq, bitRate)
+
+@sim_case(domains = (('sync', 16e6),), dut = Serial(), platform = Platform())
+def txDALI(sim : Simulator, dut):
+	def domainSync():
+		yield Settle()
+		assert (yield dut.tx) == 1
+		yield
+		yield
+		yield Settle()
+		assert (yield dut.tx) == 1
+		yield from waitBitTime(16e6, dut._bitRate)
+		yield from recvResponse(0b0100_0100, dut = dut, clkFreq = 16e6, bitRate = dut._bitRate)
 		yield
 		yield
 
