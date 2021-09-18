@@ -6,6 +6,7 @@ class Serial(Elaboratable):
 		self.rx = Signal()
 		self.tx = Signal()
 		self.dataIn = Signal(8)
+		self.dataSend = Signal()
 		self.dataOut = Signal(16)
 		self.dataAvailable = Signal()
 		self.error = Signal()
@@ -16,7 +17,9 @@ class Serial(Elaboratable):
 		timerCount = int(platform.default_clk_frequency) // self._bitRate
 		timerWidth = range(timerCount)
 		rxTimer = Signal(timerWidth)
+		txTimer = Signal(timerWidth)
 		rxTimerEnabled = Signal()
+		txTimerEnabled = Signal()
 
 		with m.If(rxTimerEnabled):
 			with m.If(rxTimer == (timerCount - 1)):
@@ -26,19 +29,31 @@ class Serial(Elaboratable):
 		with m.Else():
 			m.d.sync += rxTimer.eq(0)
 
+		with m.If(txTimerEnabled):
+			with m.If(txTimer == (timerCount - 1)):
+				m.d.sync += txTimer.eq(0)
+			with m.Else():
+				m.d.sync += txTimer.eq(txTimer + 1)
+		with m.Else():
+			m.d.sync += txTimer.eq(0)
+
 		m.submodules.encoder = encoder = ManchesterEncoder()
 		m.submodules.decoder = decoder = ManchesterDecoder()
 
 		rxStep = Signal()
 		rxCycle = Signal()
+		txStep = Signal()
+		txCycle = Signal()
 
 		m.d.comb += [
 			rxStep.eq((rxTimer == 0) & rxTimerEnabled),
 			self.dataAvailable.eq(0),
+			txStep.eq((txTimer == 0) & txTimerEnabled),
 
 			decoder.step.eq(rxStep),
 			decoder.dataIn.eq(self.rx),
 
+			encoder.step.eq(txStep),
 			self.tx.eq(encoder.dataOut),
 		]
 
@@ -109,4 +124,58 @@ class Serial(Elaboratable):
 						m.d.comb += self.dataAvailable.eq(1)
 						m.next = 'IDLE'
 		m.d.comb += dataRXError.eq(dataValid & (~decoder.valid))
+
+		dataTX = Signal.like(self.dataIn)
+		dataTXCount = Signal(range(8))
+		dataTXStopCount = Signal(range(2))
+
+		with m.FSM(name = 'tx-fsm'):
+			with m.State('IDLE'):
+				with m.If(self.dataSend):
+					m.d.sync += [
+						txTimerEnabled.eq(1),
+						txCycle.eq(0),
+						encoder.bypass.eq(0),
+						encoder.dataIn.eq(0),
+						dataTX.eq(self.dataIn),
+					]
+					m.next = 'START'
+				with m.Else():
+					m.d.sync += txTimerEnabled.eq(0)
+			with m.State('START'):
+				with m.If(txStep):
+					m.d.sync += txCycle.eq(txCycle ^ 1)
+				with m.If(txStep & txCycle):
+					m.next = 'START-CHECK'
+			with m.State('START-CHECK'):
+				m.d.sync += [
+					dataTXCount.eq(0),
+					encoder.dataIn.eq(dataTX[7]),
+				]
+				m.next = 'SHIFT'
+			with m.State('SHIFT'):
+				with m.If(txStep):
+					m.d.sync += txCycle.eq(txCycle ^ 1)
+				with m.If(txStep & txCycle):
+					m.d.sync += dataTX.eq(dataTX.shift_left(1)),
+					m.next = 'SHIFT-CHECK'
+			with m.State('SHIFT-CHECK'):
+				m.d.sync += dataTXCount.eq(dataTXCount + 1)
+				with m.If(dataTXCount == 7):
+					m.d.sync += [
+						encoder.bypass.eq(1),
+						encoder.dataIn.eq(1),
+						dataTXStopCount.eq(0),
+					]
+					m.next = 'STOP'
+				with m.Else():
+					m.d.sync += encoder.dataIn.eq(dataTX[7]),
+					m.next = 'SHIFT'
+			with m.State('STOP'):
+				with m.If(txStep):
+					m.d.sync += txCycle.eq(txCycle ^ 1)
+				with m.If(txStep & txCycle):
+					m.d.sync += dataTXStopCount.eq(dataTXStopCount + 1)
+					with m.If(dataTXStopCount == 1):
+						m.next = 'IDLE'
 		return m

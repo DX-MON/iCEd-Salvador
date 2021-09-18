@@ -6,7 +6,7 @@ class ManchesterEncoder(Elaboratable):
 	def __init__(self):
 		self.dataIn = Signal()
 		self.step = Signal()
-		self.dataOut = Signal()
+		self.dataOut = Signal(reset = 1)
 		self.bypass = Signal()
 
 	def elaborate(self, platform):
