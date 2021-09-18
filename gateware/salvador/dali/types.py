@@ -60,7 +60,8 @@ class DALICommand(IntEnum):
 	queryRandomAddrM = 49,
 	queryRandomAddrL = 50,
 	readMemoryLoc = 51,
-	typeSpecific = 52,
+	deviceSpecific = 52,
+	nop = 53,
 
 @unique
 class DeviceType(IntEnum):
@@ -92,3 +93,4 @@ class DALILEDCommand(IntEnum):
 	queryFastFadeTime = 21,
 	queryMinFastFadeTime = 22,
 	queryExtVersionNumber = 23,
+	nop = 24,

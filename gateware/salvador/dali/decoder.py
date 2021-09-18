@@ -44,10 +44,8 @@ class CommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALICommand.stepUpAndOn)
 			with m.Case('0000 1001'):
 				m.d.comb += command.eq(DALICommand.enableDirectCtrl)
-			with m.Case('0000 101-'):
-				pass
-			with m.Case('0000 11--'):
-				pass
+			# with m.Case('0000 101-'):
+			# with m.Case('0000 11--'):
 			with m.Case('0001 ----'):
 				m.d.comb += [
 					command.eq(DALICommand.gotoScene),
@@ -57,12 +55,9 @@ class CommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALICommand.reset)
 			with m.Case('0010 0000'):
 				m.d.comb += command.eq(DALICommand.levelToDTR)
-			with m.Case('0010 001-'):
-				pass
-			with m.Case('0010 01--'):
-				pass
-			with m.Case('0010 100-'):
-				pass
+			# with m.Case('0010 001-'):
+			# with m.Case('0010 01--'):
+			# with m.Case('0010 100-'):
 			with m.Case('0010 1010'):
 				m.d.comb += command.eq(DALICommand.dtrToMaxLevel)
 			with m.Case('0010 1011'):
@@ -75,26 +70,34 @@ class CommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALICommand.dtrToFadeTime)
 			with m.Case('0010 1111'):
 				m.d.comb += command.eq(DALICommand.dtrToFadeRate)
-			with m.Case('0011 ----'):
-				pass
+			# with m.Case('0011 ----'):
 			with m.Case('0100 ----'):
-				m.d.comb += command.eq(DALICommand.dtrToScene)
+				m.d.comb += [
+					command.eq(DALICommand.dtrToScene),
+					data.eq(commandBits[0:4]),
+				]
 			with m.Case('0101 ----'):
-				m.d.comb += command.eq(DALICommand.removeFromScene)
+				m.d.comb += [
+					command.eq(DALICommand.removeFromScene),
+					data.eq(commandBits[0:4]),
+				]
 			with m.Case('0110 ----'):
-				m.d.comb += command.eq(DALICommand.addToGroup)
+				m.d.comb += [
+					command.eq(DALICommand.addToGroup),
+					data.eq(commandBits[0:4]),
+				]
 			with m.Case('0111 ----'):
-				m.d.comb += command.eq(DALICommand.removeFromGroup)
+				m.d.comb += [
+					command.eq(DALICommand.removeFromGroup),
+					data.eq(commandBits[0:4]),
+				]
 			with m.Case('1000 0000'):
 				m.d.comb += command.eq(DALICommand.dtrToShortAddress)
 			with m.Case('1000 0001'):
 				m.d.comb += command.eq(DALICommand.enableMemoryWrite)
-			with m.Case('1000 001-'):
-				pass
-			with m.Case('1000 01--'):
-				pass
-			with m.Case('1000 1---'):
-				pass
+			# with m.Case('1000 001-'):
+			# with m.Case('1000 01--'):
+			# with m.Case('1000 1---'):
 			with m.Case('1001 0000'):
 				m.d.comb += command.eq(DALICommand.queryStatus)
 			with m.Case('1001 0001'):
@@ -123,8 +126,7 @@ class CommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALICommand.queryDTR1)
 			with m.Case('1001 1101'):
 				m.d.comb += command.eq(DALICommand.queryDTR2)
-			with m.Case('1001 111-'):
-				pass
+			# with m.Case('1001 111-'):
 			with m.Case('1010 0000'):
 				m.d.comb += command.eq(DALICommand.queryLevel)
 			with m.Case('1010 0001'):
@@ -137,12 +139,13 @@ class CommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALICommand.queryFailureLevel)
 			with m.Case('1010 0101'):
 				m.d.comb += command.eq(DALICommand.queryFadeTimeRate)
-			with m.Case('1010 011-'):
-				pass
-			with m.Case('1010 1---'):
-				pass
+			# with m.Case('1010 011-'):
+			# with m.Case('1010 1---'):
 			with m.Case('1011 ----'):
-				m.d.comb += command.eq(DALICommand.querySceneLevel)
+				m.d.comb += [
+					command.eq(DALICommand.querySceneLevel),
+					data.eq(commandBits[0:4]),
+				]
 			with m.Case('1100 0000'):
 				m.d.comb += command.eq(DALICommand.queryGroups0_7)
 			with m.Case('1100 0001'):
@@ -155,17 +158,16 @@ class CommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALICommand.queryRandomAddrL)
 			with m.Case('1100 0101'):
 				m.d.comb += command.eq(DALICommand.readMemoryLoc)
-			with m.Case('1100 011-'):
-				pass
-			with m.Case('1100 1---'):
-				pass
-			with m.Case('1101 ----'):
-				pass
+			# with m.Case('1100 011-'):
+			# with m.Case('1100 1---'):
+			# with m.Case('1101 ----'):
 			with m.Case('111- ----'):
 				m.d.comb += [
-					command.eq(DALICommand.typeSpecific),
+					command.eq(DALICommand.deviceSpecific),
 					typeDecoder.commandBits.eq(commandBits[0:6]),
 				]
+			with m.Default():
+				m.d.comb += command.eq(DALICommand.nop)
 
 		m.d.comb += self.deviceCommand.eq(typeDecoder.command)
 		m.submodules.typeDecoder = typeDecoder
@@ -175,7 +177,6 @@ class LEDCommandDecoder(Elaboratable):
 	def __init__(self):
 		self.commandBits = Signal(5)
 		self.command = Signal(DALILEDCommand)
-		self.data = Signal(4)
 
 	def elaborate(self, platform) -> Module:
 		m = Module()
@@ -191,14 +192,10 @@ class LEDCommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALILEDCommand.selectCurve)
 			with m.Case('00100'):
 				m.d.comb += command.eq(DALILEDCommand.dtrToFastFadeTime)
-			with m.Case('00101'):
-				pass
-			with m.Case('0011-'):
-				pass
-			with m.Case('010--'):
-				pass
-			with m.Case('01100'):
-				pass
+			# with m.Case('00101'):
+			# with m.Case('0011-'):
+			# with m.Case('010--'):
+			# with m.Case('01100'):
 			with m.Case('01101'):
 				m.d.comb += command.eq(DALILEDCommand.queryGearType)
 			with m.Case('01110'):
@@ -237,4 +234,6 @@ class LEDCommandDecoder(Elaboratable):
 				m.d.comb += command.eq(DALILEDCommand.queryMinFastFadeTime)
 			with m.Case('11111'):
 				m.d.comb += command.eq(DALILEDCommand.queryExtVersionNumber)
+			with m.Default():
+				m.d.comb += command.eq(DALILEDCommand.nop)
 		return m
