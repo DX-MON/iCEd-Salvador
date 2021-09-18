@@ -1,16 +1,25 @@
 from nmigen import *
-from .types import DALICommand
+from .types import DALICommand, DeviceType, DALILEDCommand
 
 __all__ = ('CommandDecoder',)
 
 class CommandDecoder(Elaboratable):
-	def __init__(self):
+	def __init__(self, *, deviceType : DeviceType):
+		self._typeDecoder = self.fromDeviceType(deviceType)
+
 		self.commandByte = Signal(8)
 		self.command = Signal(DALICommand)
+		self.deviceCommand = Signal.like(self._typeDecoder.command)
 		self.data = Signal(4)
+
+	def fromDeviceType(self, deviceType : DeviceType):
+		if deviceType == DeviceType.led:
+			return LEDCommandDecoder()
+		raise ValueError(f'DeviceType {deviceType} is not supported')
 
 	def elaborate(self, platform) -> Module:
 		m = Module()
+		typeDecoder = self._typeDecoder
 		commandBits = self.commandByte
 		command = self.command
 		data = self.data
@@ -155,8 +164,77 @@ class CommandDecoder(Elaboratable):
 			with m.Case('111- ----'):
 				m.d.comb += [
 					command.eq(DALICommand.typeSpecific),
+					typeDecoder.commandBits.eq(commandBits[0:6]),
 				]
-			with m.Case('1111 1111'):
-				m.d.comb += command.eq(DALICommand.queryExtVersionNumber)
 
+		m.d.comb += self.deviceCommand.eq(typeDecoder.command)
+		m.submodules.typeDecoder = typeDecoder
+		return m
+
+class LEDCommandDecoder(Elaboratable):
+	def __init__(self):
+		self.commandBits = Signal(5)
+		self.command = Signal(DALILEDCommand)
+		self.data = Signal(4)
+
+	def elaborate(self, platform) -> Module:
+		m = Module()
+		command = self.command
+		with m.Switch(self.commandBits):
+			with m.Case('00000'):
+				m.d.comb += command.eq(DALILEDCommand.referenceSystemPower)
+			with m.Case('00001'):
+				m.d.comb += command.eq(DALILEDCommand.enableCurrentProt)
+			with m.Case('00010'):
+				m.d.comb += command.eq(DALILEDCommand.disableCurrentProt)
+			with m.Case('00011'):
+				m.d.comb += command.eq(DALILEDCommand.selectCurve)
+			with m.Case('00100'):
+				m.d.comb += command.eq(DALILEDCommand.dtrToFastFadeTime)
+			with m.Case('00101'):
+				pass
+			with m.Case('0011-'):
+				pass
+			with m.Case('010--'):
+				pass
+			with m.Case('01100'):
+				pass
+			with m.Case('01101'):
+				m.d.comb += command.eq(DALILEDCommand.queryGearType)
+			with m.Case('01110'):
+				m.d.comb += command.eq(DALILEDCommand.queryDimmingCurve)
+			with m.Case('01111'):
+				m.d.comb += command.eq(DALILEDCommand.queryOperatingModes)
+			with m.Case('10000'):
+				m.d.comb += command.eq(DALILEDCommand.queryFeatures)
+			with m.Case('10001'):
+				m.d.comb += command.eq(DALILEDCommand.queryFailStatus)
+			with m.Case('10010'):
+				m.d.comb += command.eq(DALILEDCommand.queryShortCircuit)
+			with m.Case('10011'):
+				m.d.comb += command.eq(DALILEDCommand.queryOpenCircuit)
+			with m.Case('10100'):
+				m.d.comb += command.eq(DALILEDCommand.queryLoadDecrease)
+			with m.Case('10101'):
+				m.d.comb += command.eq(DALILEDCommand.queryLoadIncrease)
+			with m.Case('10110'):
+				m.d.comb += command.eq(DALILEDCommand.queryCurrentProtActive)
+			with m.Case('10111'):
+				m.d.comb += command.eq(DALILEDCommand.queryThermalShutDown)
+			with m.Case('11000'):
+				m.d.comb += command.eq(DALILEDCommand.queryThermalOverload)
+			with m.Case('11001'):
+				m.d.comb += command.eq(DALILEDCommand.queryReferenceRunning)
+			with m.Case('11010'):
+				m.d.comb += command.eq(DALILEDCommand.queryReferenceFailed)
+			with m.Case('11011'):
+				m.d.comb += command.eq(DALILEDCommand.queryCurrentProtEn)
+			with m.Case('11100'):
+				m.d.comb += command.eq(DALILEDCommand.queryOperatingMode)
+			with m.Case('11101'):
+				m.d.comb += command.eq(DALILEDCommand.queryFastFadeTime)
+			with m.Case('11110'):
+				m.d.comb += command.eq(DALILEDCommand.queryMinFastFadeTime)
+			with m.Case('11111'):
+				m.d.comb += command.eq(DALILEDCommand.queryExtVersionNumber)
 		return m

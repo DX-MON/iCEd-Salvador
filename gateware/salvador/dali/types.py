@@ -1,5 +1,11 @@
 from enum import IntEnum, unique
 
+__all__ = (
+	'DALICommand',
+	'DeviceType',
+	'DALILEDCommand',
+)
+
 @unique
 class DALICommand(IntEnum):
 	lampOff = 0,
@@ -55,4 +61,34 @@ class DALICommand(IntEnum):
 	queryRandomAddrL = 50,
 	readMemoryLoc = 51,
 	typeSpecific = 52,
-	queryExtVersionNumber = 53,
+
+@unique
+class DeviceType(IntEnum):
+	led = 6
+
+@unique
+class DALILEDCommand(IntEnum):
+	referenceSystemPower = 0,
+	enableCurrentProt = 1,
+	disableCurrentProt = 2,
+	selectCurve = 3,
+	dtrToFastFadeTime = 4,
+	queryGearType = 5,
+	queryDimmingCurve = 6,
+	queryOperatingModes = 7,
+	queryFeatures = 8,
+	queryFailStatus = 9,
+	queryShortCircuit = 10,
+	queryOpenCircuit = 11,
+	queryLoadDecrease = 12,
+	queryLoadIncrease = 13,
+	queryCurrentProtActive = 14,
+	queryThermalShutDown = 15,
+	queryThermalOverload = 16,
+	queryReferenceRunning = 17,
+	queryReferenceFailed = 18,
+	queryCurrentProtEn = 19,
+	queryOperatingMode = 20,
+	queryFastFadeTime = 21,
+	queryMinFastFadeTime = 22,
+	queryExtVersionNumber = 23,
