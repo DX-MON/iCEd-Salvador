@@ -1,5 +1,4 @@
 from nmigen import *
-from nmigen.build import Resource
 from .types import *
 from .serial import Serial
 from .decoder import CommandDecoder
@@ -10,7 +9,7 @@ __all__ = (
 )
 
 class DALI(Elaboratable):
-	def __init__(self, *, interface : Resource, deviceType : DeviceType):
+	def __init__(self, *, interface : Record, deviceType : DeviceType):
 		self._interface = interface
 		self._deviceType = deviceType
 		self.error = Signal()
@@ -40,7 +39,7 @@ class DALI(Elaboratable):
 			commandBits.eq(serial.dataOut[0:8]),
 			decoder.commandByte.eq(commandBits),
 
-			serial.dataOut.eq(response),
+			serial.dataIn.eq(response),
 		]
 
 		with m.FSM(name = 'dali-fsm'):
@@ -80,6 +79,8 @@ class DALI(Elaboratable):
 						self._handleDeviceSpecific(m, serial, deviceCommand, response)
 					with m.Case(DALICommand.nop):
 						m.next = 'IDLE'
+					with m.Default():
+						m.next = 'IDLE'
 			# Resync with the TX completing
 			with m.State('WAIT'):
 				with m.If(serial.sendComplete):
@@ -99,4 +100,6 @@ class DALI(Elaboratable):
 				m.d.comb += serial.dataSend.eq(1)
 				m.next = 'WAIT'
 			with m.Case(DALILEDCommand.nop):
+				m.next = 'IDLE'
+			with m.Default():
 				m.next = 'IDLE'
