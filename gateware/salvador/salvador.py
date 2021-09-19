@@ -4,5 +4,5 @@ from .dali import *
 class Salvador(Elaboratable):
 	def elaborate(self, platform):
 		m = Module()
-		m.submodules.dali = DALI(interface = platform.request('dali'))
+		m.submodules.dali = DALI(interface = platform.request('dali'), deviceType = DeviceType.led)
 		return m

@@ -1,3 +1,6 @@
-from .dali import DALI
+from .dali import *
 
-__all__ = ('DALI',)
+__all__ = (
+	'DALI',
+	'DeviceType'
+)
