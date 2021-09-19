@@ -7,6 +7,7 @@ class Serial(Elaboratable):
 		self.tx = Signal()
 		self.dataIn = Signal(8)
 		self.dataSend = Signal()
+		self.sendComplete = Signal()
 		self.dataOut = Signal(16)
 		self.dataAvailable = Signal()
 		self.error = Signal()
@@ -49,6 +50,7 @@ class Serial(Elaboratable):
 			rxStep.eq((rxTimer == 0) & rxTimerEnabled),
 			self.dataAvailable.eq(0),
 			txStep.eq((txTimer == 0) & txTimerEnabled),
+			self.sendComplete.eq(0),
 
 			decoder.step.eq(rxStep),
 			decoder.dataIn.eq(self.rx),
@@ -137,7 +139,6 @@ class Serial(Elaboratable):
 						txCycle.eq(0),
 						encoder.bypass.eq(0),
 						encoder.dataIn.eq(0),
-						dataTX.eq(self.dataIn),
 					]
 					m.next = 'START'
 				with m.Else():
@@ -146,6 +147,7 @@ class Serial(Elaboratable):
 				with m.If(txStep):
 					m.d.sync += txCycle.eq(txCycle ^ 1)
 				with m.If(txStep & txCycle):
+					m.d.sync += dataTX.eq(self.dataIn)
 					m.next = 'START-CHECK'
 			with m.State('START-CHECK'):
 				m.d.sync += [
@@ -177,5 +179,6 @@ class Serial(Elaboratable):
 				with m.If(txStep & txCycle):
 					m.d.sync += dataTXStopCount.eq(dataTXStopCount + 1)
 					with m.If(dataTXStopCount == 1):
+						m.d.comb += self.sendComplete.eq(1)
 						m.next = 'IDLE'
 		return m
