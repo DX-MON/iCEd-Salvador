@@ -16,9 +16,8 @@ class Serial(Elaboratable):
 	def elaborate(self, platform):
 		m = Module()
 		timerCount = int(platform.default_clk_frequency) // self._bitRate
-		timerWidth = range(timerCount)
-		rxTimer = Signal(timerWidth)
-		txTimer = Signal(timerWidth)
+		rxTimer = Signal(range(timerCount))
+		txTimer = Signal(range(timerCount))
 		rxTimerEnabled = Signal()
 		txTimerEnabled = Signal()
 
@@ -157,8 +156,12 @@ class Serial(Elaboratable):
 		dataTXStopCount = Signal(range(2))
 
 		with m.FSM(name = 'tx-fsm'):
+			# Wait for the controller to signal data to send
 			with m.State('IDLE'):
 				with m.If(self.dataSend):
+					# Signal received, start the tx timer,
+					# setting a 0-bit for the encoder
+					# and reset the cycle toggle + bypass mode
 					m.d.sync += [
 						txTimerEnabled.eq(1),
 						txCycle.eq(0),
@@ -167,27 +170,38 @@ class Serial(Elaboratable):
 					]
 					m.next = 'START'
 				with m.Else():
+					# Ensure the tx timer is off (resets it to 0) otherwise
 					m.d.sync += txTimerEnabled.eq(0)
+			# We began the start condition, wait half a bit time to before starting shift prep
 			with m.State('START'):
 				with m.If(txStep):
 					m.d.sync += txCycle.eq(txCycle ^ 1)
 				with m.If(txStep & txCycle):
+					# When we get to the end of the first half of the cycle for the start bit,
+					# the encoder will put out its complement, so load the next bit
 					m.d.sync += dataTX.eq(self.dataIn)
-					m.next = 'START-CHECK'
-			with m.State('START-CHECK'):
+					m.next = 'SHIFT-PREP'
+			# Retiming and encoder prep state for the end of the start bit and first data bit
+			with m.State('SHIFT-PREP'):
 				m.d.sync += [
 					dataTXCount.eq(0),
 					encoder.dataIn.eq(dataTX[7]),
 				]
 				m.next = 'SHIFT'
+			# Data shift state
 			with m.State('SHIFT'):
 				with m.If(txStep):
 					m.d.sync += txCycle.eq(txCycle ^ 1)
 				with m.If(txStep & txCycle):
+					# When we get to the end of the first half of the cycle for the current bit,
+					# the encoder will put out its complement, shift the data to send
 					m.d.sync += dataTX.eq(dataTX.shift_left(1)),
-					m.next = 'SHIFT-CHECK'
-			with m.State('SHIFT-CHECK'):
+					m.next = 'SHIFT-NEXT'
+			# Retiming and decoder check + data store state
+			with m.State('SHIFT-NEXT'):
 				m.d.sync += dataTXCount.eq(dataTXCount + 1)
+				# If we timed out all the bits then put the encoder into bypass and setup the stop bits
+				# (This state covers the first half of the first stop bit)
 				with m.If(dataTXCount == 7):
 					m.d.sync += [
 						encoder.bypass.eq(1),
@@ -196,14 +210,19 @@ class Serial(Elaboratable):
 					]
 					m.next = 'STOP'
 				with m.Else():
+					# Load the next bit please
 					m.d.sync += encoder.dataIn.eq(dataTX[7]),
 					m.next = 'SHIFT'
+			# Stop bit generation
 			with m.State('STOP'):
 				with m.If(txStep):
 					m.d.sync += txCycle.eq(txCycle ^ 1)
 				with m.If(txStep & txCycle):
+					# If we've emitted the second half of the current stop bit
 					m.d.sync += dataTXStopCount.eq(dataTXStopCount + 1)
+					# If we've generated both stop bits
 					with m.If(dataTXStopCount == 1):
+						# Signal that we're done transmitting
 						m.d.comb += self.sendComplete.eq(1)
 						m.next = 'IDLE'
 		return m
