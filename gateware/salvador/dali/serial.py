@@ -71,8 +71,11 @@ class Serial(Elaboratable):
 		dataRXError = Signal()
 
 		with m.FSM(name = 'rx-fsm'):
+			# Wait for data on the rx line
 			with m.State('IDLE'):
 				with m.If(startStrobe):
+					# We've seen the start bit condition, start the rx timer
+					# and reset the cycle toggle + bypass mode
 					m.d.sync += [
 						rxTimerEnabled.eq(1),
 						rxCycle.eq(0),
@@ -80,12 +83,15 @@ class Serial(Elaboratable):
 					]
 					m.next = 'START'
 				with m.Else():
+					# Ensure the rx timer is off (resets it to 0) otherwise
 					m.d.sync += rxTimerEnabled.eq(0)
+			# We saw the start condition, wait half a bit time to check it
 			with m.State('START'):
 				with m.If(rxStep):
 					m.d.sync += rxCycle.eq(rxCycle ^ 1)
 				with m.If(rxStep & rxCycle):
 					m.next = 'START-CHECK'
+			# Retiming and decoder check state for the start bit (first half)
 			with m.State('START-CHECK'):
 				with m.If(decoder.valid):
 					m.d.sync += [
@@ -95,38 +101,53 @@ class Serial(Elaboratable):
 					m.next = 'SHIFT'
 				with m.Else():
 					m.next = 'IDLE'
+			# Data shift state
 			with m.State('SHIFT'):
 				with m.If(rxStep):
 					m.d.sync += rxCycle.eq(rxCycle ^ 1)
 				with m.If(rxStep & rxCycle):
+					# When we get to the first half of the cycle for the next bit,
+					# we know the current one is good and can be stored
 					m.next = 'SHIFT-CHECK'
+			# Retiming and decoder check + data store state
 			with m.State('SHIFT-CHECK'):
+				# Store the value of the *previous* bit
 				m.d.sync += [
 					dataRX.eq(Cat(decoder.dataOut , dataRX[:-1])),
 					dataRXCount.eq(dataRXCount + 1),
 				]
+				# Check if the decoder state indicates an error (invalidate if true)
 				with m.If(~decoder.valid):
 					m.d.sync += dataValid.eq(0)
+				# If we timed in all the bits then put the decoder into bypass and look for the stop bits
+				# (This state covers the first half of the first stop bit)
 				with m.If(dataRXCount == 15):
 					m.d.sync += [
 						decoder.bypass.eq(1),
 						dataRXStopCount.eq(0),
 					]
 					m.next = 'STOP'
+				# Next bit please
 				with m.Else():
 					m.next = 'SHIFT'
+			# Stop bit checking
 			with m.State('STOP'):
 				with m.If(rxStep):
 					m.d.sync += rxCycle.eq(rxCycle ^ 1)
 				with m.If(rxStep & rxCycle):
+					# If we've seen the second half of the current stop bit
 					m.d.sync += dataRXStopCount.eq(dataRXStopCount + 1)
+					# Make sure things are still valid (invalidate if not)
 					with m.If(~decoder.valid):
 						m.d.sync == dataValid.eq(0)
+					# If we've seen both stop bits
 					with m.If(dataRXStopCount == 1):
+						# Make the error state and received data are presented up
 						m.d.sync += [
 							self.error.eq(dataRXError),
 							self.dataOut.eq(dataRX),
 						]
+						# And signal that we've made data available
 						m.d.comb += self.dataAvailable.eq(1)
 						m.next = 'IDLE'
 		m.d.comb += dataRXError.eq(dataValid & (~decoder.valid))
