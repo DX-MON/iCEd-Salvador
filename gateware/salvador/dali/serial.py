@@ -76,6 +76,7 @@ class Serial(Elaboratable):
 					m.d.sync += [
 						rxTimerEnabled.eq(1),
 						rxCycle.eq(0),
+						decoder.bypass.eq(0),
 					]
 					m.next = 'START'
 				with m.Else():
