@@ -3,7 +3,10 @@ from nmigen.sim import *
 
 from ...dali.serial import Serial
 
-__all__ = ('rxDALI', 'txDALI')
+__all__ = (
+	'rxDALI',
+	'txDALI',
+)
 
 class Platform:
 	@property

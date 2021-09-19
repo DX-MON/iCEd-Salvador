@@ -122,7 +122,10 @@ class Serial(Elaboratable):
 					with m.If(~decoder.valid):
 						m.d.sync == dataValid.eq(0)
 					with m.If(dataRXStopCount == 1):
-						m.d.sync += self.error.eq(dataRXError)
+						m.d.sync += [
+							self.error.eq(dataRXError),
+							self.dataOut.eq(dataRX),
+						]
 						m.d.comb += self.dataAvailable.eq(1)
 						m.next = 'IDLE'
 		m.d.comb += dataRXError.eq(dataValid & (~decoder.valid))
