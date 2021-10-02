@@ -81,6 +81,49 @@ class DALI(Elaboratable):
 					with m.Case(DALICommand.levelToDTR):
 						m.d.sync += dtr.eq(actualLevel)
 						m.next = 'IDLE'
+					with m.Case(DALICommand.dtrToMaxLevel):
+						with m.If(dtr == 0xFF):
+							m.d.sync += maxLevel.eq(254)
+						with m.Elif(dtr > minLevel):
+							m.d.sync += maxLevel.eq(dtr)
+						with m.Else():
+							m.d.sync += maxLevel.eq(minLevel)
+						# TODO: Check and set actualLevel if it's above the new maxLevel
+						m.next = 'IDLE'
+					with m.Case(DALICommand.dtrToMinLevel):
+						with m.If(dtr < self.phyiscalMinLevel):
+							m.d.sync += minLevel.eq(self.phyiscalMinLevel)
+						with m.Elif(dtr > maxLevel):
+							m.d.sync += minLevel.eq(maxLevel)
+						with m.Else():
+							m.d.sync += minLevel.eq(dtr)
+						# TODO: Check and set actualLevel if it's below the new levelLevel (unless 0)
+						m.next = 'IDLE'
+					with m.Case(DALICommand.dtrToFailureLevel):
+						m.d.sync += failureLevel.eq(dtr)
+						m.next = 'IDLE'
+					with m.Case(DALICommand.dtrToOnLevel):
+						m.d.sync += onLevel.eq(dtr)
+						m.next = 'IDLE'
+					with m.Case(DALICommand.dtrToFadeTime):
+						with m.If(dtr > 15):
+							m.d.sync += fadeTime.eq(15)
+						with m.Else():
+							m.d.sync += fadeTime.eq(dtr)
+						m.next = 'IDLE'
+					with m.Case(DALICommand.dtrToFadeRate):
+						with m.If(dtr > 15):
+							m.d.sync += fadeRate.eq(15)
+						with m.Else():
+							m.d.sync += fadeRate.eq(dtr)
+						m.next = 'IDLE'
+					with m.Case(DALICommand.dtrToScene):
+						m.d.sync += scene[commandData].eq(dtr)
+						m.next = 'IDLE'
+					with m.Case(DALICommand.removeFromScene):
+						m.d.sync += scene[commandData].eq(0xFF)
+						m.next = 'IDLE'
+
 					with m.Case(DALICommand.queryDTR):
 						self.sendRegister(m, response, serial, dtr)
 					with m.Case(DALICommand.queryDeviceType):
