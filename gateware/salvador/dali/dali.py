@@ -82,48 +82,28 @@ class DALI(Elaboratable):
 						m.d.sync += dtr.eq(actualLevel)
 						m.next = 'IDLE'
 					with m.Case(DALICommand.queryDTR):
-						m.d.sync += response.eq(dtr)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, dtr)
 					with m.Case(DALICommand.queryDeviceType):
-						m.d.sync += response.eq(self._deviceType)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, self._deviceType)
 
 					with m.Case(DALICommand.queryPhyMinLevel):
 						assert self.phyiscalMinLevel.value > 0 and self.phyiscalMinLevel.value < 255
-						m.d.sync += response.eq(self.phyiscalMinLevel)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, self.phyiscalMinLevel)
 
 					with m.Case(DALICommand.queryDTR1):
-						m.d.sync += response.eq(dtr1)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, dtr1)
 					with m.Case(DALICommand.queryDTR2):
-						m.d.sync += response.eq(dtr2)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, dtr2)
 					with m.Case(DALICommand.queryLevel):
-						m.d.sync += response.eq(actualLevel)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, actualLevel)
 					with m.Case(DALICommand.queryMaxLevel):
-						m.d.sync += response.eq(maxLevel)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, maxLevel)
 					with m.Case(DALICommand.queryMinLevel):
-						m.d.sync += response.eq(minLevel)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, minLevel)
 					with m.Case(DALICommand.queryOnLevel):
-						m.d.sync += response.eq(onLevel)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, onLevel)
 					with m.Case(DALICommand.queryFailureLevel):
-						m.d.sync += response.eq(failureLevel)
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, failureLevel)
 					with m.Case(DALICommand.queryFadeTimeRate):
 						m.d.sync += [
 							response[0:4].eq(fadeRate),
@@ -132,29 +112,20 @@ class DALI(Elaboratable):
 						m.d.comb += serial.dataSend.eq(1)
 						m.next = 'WAIT'
 					with m.Case(DALICommand.querySceneLevel):
-						m.d.sync += response.eq(scene[commandData])
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, scene[commandData])
 					with m.Case(DALICommand.queryGroups0_7):
-						m.d.sync += response.eq(group[0:8])
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, group[0:8])
 					with m.Case(DALICommand.queryGroups8_15):
-						m.d.sync += response.eq(group[8:16])
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, group[8:16])
 					with m.Case(DALICommand.queryRandomAddrL):
+						self.sendRegister(m, response, serial, randomAddress[0:8])
 						m.d.sync += response.eq(randomAddress[0:8])
 						m.d.comb += serial.dataSend.eq(1)
 						m.next = 'WAIT'
 					with m.Case(DALICommand.queryRandomAddrM):
-						m.d.sync += response.eq(randomAddress[8:16])
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, randomAddress[8:16])
 					with m.Case(DALICommand.queryRandomAddrH):
-						m.d.sync += response.eq(randomAddress[16:24])
-						m.d.comb += serial.dataSend.eq(1)
-						m.next = 'WAIT'
+						self.sendRegister(m, response, serial, randomAddress[16:24])
 					# If we got a device-type-specific command
 					with m.Case(DALICommand.deviceSpecific):
 						self._handleDeviceSpecific(m, serial, deviceCommand, response)
@@ -168,6 +139,11 @@ class DALI(Elaboratable):
 					m.next = 'IDLE'
 
 		return m
+
+	def sendRegister(self, m, response : Signal, serial : Serial, register : Signal):
+		m.d.sync += response.eq(register)
+		m.d.comb += serial.dataSend.eq(1)
+		m.next = 'WAIT'
 
 	def _handleDeviceSpecific(self, m, serial, command, response):
 		if self._deviceType == DeviceType.led:
