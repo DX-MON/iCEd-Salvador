@@ -9,10 +9,38 @@ __all__ = (
 	'deviceAndVersion',
 )
 
+fram_spi = Record(
+	layout = (
+		('cs', [
+			('o', 1, DIR_FANOUT),
+		]),
+		('clk', [
+			('o', 1, DIR_FANOUT),
+		]),
+		('copi', [
+			('o', 1, DIR_FANOUT),
+			('oe', 1, DIR_FANOUT),
+		]),
+		('cipo', [
+			('i', 1, DIR_FANIN),
+		]),
+	)
+)
+
 class Platform:
 	@property
 	def default_clk_frequency(self):
 		return float(16e6)
+
+	def lookup(self, name, number):
+		assert name == 'fram'
+		assert number == 0
+		return Resource('fram', 0, Subsignal('copi', Pins('0', dir = 'o')))
+
+	def request(self, name, number):
+		assert name == 'fram'
+		assert number == 0
+		return fram_spi
 
 interface = Record(
 	layout = (
@@ -77,7 +105,7 @@ def recvResponse(*, interface, clkFreq, bitRate):
 	return response
 
 @sim_case(domains = (('sync', 16e6),),
-	dut = DALI(interface = interface, deviceType = DeviceType.led),
+	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
 	platform = Platform())
 def deviceAndVersion(sim : Simulator, dut):
 	bitRate = 2400
