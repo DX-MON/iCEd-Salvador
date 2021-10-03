@@ -1,3 +1,4 @@
+from typing import Union
 from nmigen import *
 from .types import *
 from .serial import Serial
@@ -9,16 +10,20 @@ __all__ = (
 )
 
 class DALI(Elaboratable):
-	def __init__(self, *, interface : Record, deviceType : DeviceType):
+	def __init__(self, *, interface : Record, deviceType : DeviceType, persistResource : tuple):
 		self._interface = interface
 		self._deviceType = deviceType
 		self.error = Signal()
 		self.phyiscalMinLevel = Const(1, 8)
+		self._framMap = {}
+		self._framNextAddr = 0
+		self._persistResource = persistResource
 
 	def elaborate(self, platform):
 		m = Module()
 		m.submodules.serial = serial = Serial()
 		m.submodules.decoder = decoder = CommandDecoder(deviceType = self._deviceType)
+		m.submodules.persistMemory = persistMemory = FRAM(resourceName = self._persistResource)
 		interface = self._interface
 
 		address = Signal(8)
@@ -89,7 +94,8 @@ class DALI(Elaboratable):
 						with m.Else():
 							m.d.sync += maxLevel.eq(minLevel)
 						# TODO: Check and set actualLevel if it's above the new maxLevel
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(maxLevel)),
+						m.next = 'WRITEBACK'
 					with m.Case(DALICommand.dtrToMinLevel):
 						with m.If(dtr < self.phyiscalMinLevel):
 							m.d.sync += minLevel.eq(self.phyiscalMinLevel)
@@ -98,31 +104,38 @@ class DALI(Elaboratable):
 						with m.Else():
 							m.d.sync += minLevel.eq(dtr)
 						# TODO: Check and set actualLevel if it's below the new levelLevel (unless 0)
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(minLevel)),
+						m.next = 'WRITEBACK'
 					with m.Case(DALICommand.dtrToFailureLevel):
 						m.d.sync += failureLevel.eq(dtr)
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(failureLevel)),
+						m.next = 'WRITEBACK'
 					with m.Case(DALICommand.dtrToOnLevel):
 						m.d.sync += onLevel.eq(dtr)
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(onLevel)),
+						m.next = 'WRITEBACK'
 					with m.Case(DALICommand.dtrToFadeTime):
 						with m.If(dtr > 15):
 							m.d.sync += fadeTime.eq(15)
 						with m.Else():
 							m.d.sync += fadeTime.eq(dtr)
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(fadeTime)),
+						m.next = 'WRITEBACK'
 					with m.Case(DALICommand.dtrToFadeRate):
 						with m.If(dtr > 15):
 							m.d.sync += fadeRate.eq(15)
 						with m.Else():
 							m.d.sync += fadeRate.eq(dtr)
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(fadeRate)),
+						m.next = 'WRITEBACK'
 					with m.Case(DALICommand.dtrToScene):
 						m.d.sync += scene[commandData].eq(dtr)
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(scene) + commandData),
+						m.next = 'WRITEBACK'
 					with m.Case(DALICommand.removeFromScene):
 						m.d.sync += scene[commandData].eq(0xFF)
-						m.next = 'IDLE'
+						m.d.sync += persistMemory.address.eq(self.mapRegister(scene) + commandData),
+						m.next = 'WRITEBACK'
 
 					with m.Case(DALICommand.queryDTR):
 						self.sendRegister(m, response, serial, dtr)
@@ -180,8 +193,34 @@ class DALI(Elaboratable):
 			with m.State('WAIT'):
 				with m.If(serial.sendComplete):
 					m.next = 'IDLE'
+			# Data writeback state
+			with m.State('WRITEBACK'):
+				with m.Switch(command):
+					with m.Case(DALICommand.dtrToMaxLevel):
+						m.d.sync += persistMemory.dataOut.eq(maxLevel)
+					with m.Case(DALICommand.dtrToMinLevel):
+						m.d.sync += persistMemory.dataOut.eq(minLevel)
+					with m.Default():
+						# ERROR..
+						m.next = 'IDLE'
+				m.d.comb += persistMemory.write.eq(1)
+				m.next = 'WRITEBACK-WAIT'
+			with m.State('WRITEBACK-WAIT'):
+				with m.If(persistMemory.complete):
+					m.next = 'IDLE'
 
 		return m
+
+	def mapRegister(self, register : Union[Signal, Array]):
+		if isinstance(register, Signal):
+			addr = self._framMap.setdefault(register.name, self._framNextAddr)
+			if addr == self._framNextAddr:
+				self._framNextAddr += 1
+		else:
+			addr = self._framMap.setdefault(register._inner[0].name, self._framNextAddr)
+			if addr == self._framNextAddr:
+				self._framNextAddr += len(register)
+		return addr
 
 	def sendRegister(self, m, response : Signal, serial : Serial, register : Signal):
 		m.d.sync += response.eq(register)
