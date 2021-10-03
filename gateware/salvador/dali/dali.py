@@ -51,6 +51,8 @@ class DALI(Elaboratable):
 		dtr1 = Signal(8)
 		dtr2 = Signal(8)
 		response = Signal(8)
+		allowMemoryWrite = Signal()
+		powerFailure = Signal(reset = 1)
 
 		m.d.comb += [
 			serial.rx.eq(interface.rx.i),
@@ -62,10 +64,17 @@ class DALI(Elaboratable):
 			decoder.commandByte.eq(commandBits),
 
 			serial.dataIn.eq(response),
+
+			# status[2] indicates whether the lamp is lit
+			status[2].eq(actualLevel != 0),
+			# status[6] indicates if our short address is ok
+			status[6].eq(shortAddress == 255),
+			status[7].eq(powerFailure),
 		]
 
 		with m.FSM(name = 'dali-fsm'):
 			with m.State('RESET'):
+				m.d.sync += allowMemoryWrite.eq(0)
 				m.next = 'IDLE'
 			# Spin until we get a valid command
 			with m.State('IDLE'):
@@ -82,9 +91,11 @@ class DALI(Elaboratable):
 			# Disptch the command
 			with m.State('EXECUTE'):
 				with m.Switch(command):
+
 					with m.Case(DALICommand.lampOff):
 						m.d.sync += actualLevel.eq(0)
 						m.next = 'IDLE'
+
 					with m.Case(DALICommand.levelToDTR):
 						m.d.sync += dtr.eq(actualLevel)
 						m.next = 'IDLE'
@@ -151,16 +162,29 @@ class DALI(Elaboratable):
 						m.d.sync += shortAddress.eq(dtr)
 						m.d.sync += persistMemory.address.eq(self.mapRegister(shortAddress)),
 						m.next = 'WRITEBACK'
+					with m.Case(DALICommand.enableMemoryWrite):
+						m.d.sync += allowMemoryWrite.eq(1)
+						m.next = 'IDLE'
+					with m.Case(DALICommand.queryStatus):
+						self.sendRegister(m, response, serial, status)
 
+					with m.Case(DALICommand.queryPowerOn):
+						self.sendRegister(m, response, serial, Cat(status[2], Const(0, 7)))
+
+					with m.Case(DALICommand.queryMissingShortAddr):
+						self.sendRegister(m, response, serial, Cat(status[6], Const(0, 7)))
+					with m.Case(DALICommand.queryVersionNumber):
+						# Standard says we answer '1'..
+						self.sendRegister(m, response, serial, Const(1, 8))
 					with m.Case(DALICommand.queryDTR):
 						self.sendRegister(m, response, serial, dtr)
 					with m.Case(DALICommand.queryDeviceType):
 						self.sendRegister(m, response, serial, self._deviceType)
-
 					with m.Case(DALICommand.queryPhyMinLevel):
 						assert self.phyiscalMinLevel.value > 0 and self.phyiscalMinLevel.value < 255
 						self.sendRegister(m, response, serial, self.phyiscalMinLevel)
-
+					with m.Case(DALICommand.queryPowerFailure):
+						self.sendRegister(m, response, serial, Cat(powerFailure, Const(0, 7)))
 					with m.Case(DALICommand.queryDTR1):
 						self.sendRegister(m, response, serial, dtr1)
 					with m.Case(DALICommand.queryDTR2):
@@ -210,6 +234,7 @@ class DALI(Elaboratable):
 					m.next = 'IDLE'
 			# Data writeback state
 			with m.State('WRITEBACK'):
+				m.d.sync += allowMemoryWrite.eq(0)
 				with m.Switch(command):
 					with m.Case(DALICommand.dtrToMaxLevel):
 						m.d.sync += persistMemory.dataOut.eq(maxLevel)
@@ -237,8 +262,11 @@ class DALI(Elaboratable):
 				self._framNextAddr += len(register)
 		return addr
 
-	def sendRegister(self, m, response : Signal, serial : Serial, register : Signal):
-		m.d.sync += response.eq(register)
+	def sendRegister(self, m, response : Signal, serial : Serial, register : Value):
+		m.d.sync += [
+			response.eq(register),
+			#allowMemoryWrite.eq(0),
+		]
 		m.d.comb += serial.dataSend.eq(1)
 		m.next = 'WAIT'
 
