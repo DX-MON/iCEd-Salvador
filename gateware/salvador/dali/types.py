@@ -23,7 +23,7 @@ class DALICommand(IntEnum):
 	levelToDTR = 12,
 	dtrToMaxLevel = 13,
 	dtrToMinLevel = 14,
-	dtrToSysFailLevel = 15,
+	dtrToFailureLevel = 15,
 	dtrToOnLevel = 16,
 	dtrToFadeTime = 17,
 	dtrToFadeRate = 18,

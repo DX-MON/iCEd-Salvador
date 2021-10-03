@@ -63,7 +63,7 @@ class CommandDecoder(Elaboratable):
 			with m.Case('0010 1011'):
 				m.d.comb += command.eq(DALICommand.dtrToMinLevel)
 			with m.Case('0010 1100'):
-				m.d.comb += command.eq(DALICommand.dtrToSysFailLevel)
+				m.d.comb += command.eq(DALICommand.dtrToFailureLevel)
 			with m.Case('0010 1101'):
 				m.d.comb += command.eq(DALICommand.dtrToOnLevel)
 			with m.Case('0010 1110'):
