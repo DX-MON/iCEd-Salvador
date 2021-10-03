@@ -47,21 +47,16 @@ class FRAM(Elaboratable):
 				with m.Elif(self.write):
 					m.next = 'WRITE-ENABLE'
 			with m.State('WRITE-ENABLE'):
-				m.d.sync += [
-					bus.cs.eq(1),
-					bus.copi.eq(Opcodes.writeEnable),
-				]
+				m.d.sync += bus.copi.eq(Opcodes.writeEnable)
 				m.d.comb += bus.begin.eq(1)
 				m.next = 'WAIT-WRITE'
 			with m.State('WAIT-WRITE'):
+				m.d.sync += bus.cs.eq(1)
 				with m.If(bus.complete):
 					m.d.sync += bus.cs.eq(0)
 					m.next = 'WRITE'
 			with m.State('WRITE'):
-				m.d.sync += [
-					command.eq(Opcodes.write),
-					bus.cs.eq(1),
-				]
+				m.d.sync += command.eq(Opcodes.write)
 				m.next = 'ISSUE-CMD'
 			with m.State('ISSUE-CMD'):
 				m.d.sync += [
@@ -71,6 +66,7 @@ class FRAM(Elaboratable):
 				m.d.comb += bus.begin.eq(1)
 				m.next = 'ISSUE-ADDR-H'
 			with m.State('ISSUE-ADDR-H'):
+				m.d.sync += bus.cs.eq(1)
 				with m.If(bus.complete):
 					m.d.sync += bus.copi.eq(Cat(self.address[8:11], Const(0, 5)))
 					m.d.comb += bus.begin.eq(1)
