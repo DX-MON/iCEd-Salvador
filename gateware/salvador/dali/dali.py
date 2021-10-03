@@ -1,8 +1,10 @@
 from typing import Union
+from math import ceil
 from nmigen import *
 from .types import *
 from .serial import Serial
 from .decoder import CommandDecoder
+from ..fram import FRAM
 
 __all__ = (
 	'DALI',
@@ -136,6 +138,19 @@ class DALI(Elaboratable):
 						m.d.sync += scene[commandData].eq(0xFF)
 						m.d.sync += persistMemory.address.eq(self.mapRegister(scene) + commandData),
 						m.next = 'WRITEBACK'
+					with m.Case(DALICommand.addToGroup):
+						m.d.sync += group.bit_select(commandData, 1).eq(1)
+						m.d.sync += persistMemory.address.eq(self.mapRegister(group) + commandData[3]),
+						m.next = 'WRITEBACK'
+					with m.Case(DALICommand.removeFromGroup):
+						m.d.sync += group.bit_select(commandData, 1).eq(0)
+						m.d.sync += persistMemory.address.eq(self.mapRegister(group) + commandData[3]),
+						m.next = 'WRITEBACK'
+					with m.Case(DALICommand.dtrToShortAddress):
+						# TOD: Validate dtr.
+						m.d.sync += shortAddress.eq(dtr)
+						m.d.sync += persistMemory.address.eq(self.mapRegister(shortAddress)),
+						m.next = 'WRITEBACK'
 
 					with m.Case(DALICommand.queryDTR):
 						self.sendRegister(m, response, serial, dtr)
@@ -215,7 +230,7 @@ class DALI(Elaboratable):
 		if isinstance(register, Signal):
 			addr = self._framMap.setdefault(register.name, self._framNextAddr)
 			if addr == self._framNextAddr:
-				self._framNextAddr += 1
+				self._framNextAddr += ceil(len(register) / 8)
 		else:
 			addr = self._framMap.setdefault(register._inner[0].name, self._framNextAddr)
 			if addr == self._framNextAddr:
