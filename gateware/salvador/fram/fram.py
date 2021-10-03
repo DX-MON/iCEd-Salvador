@@ -88,6 +88,7 @@ class FRAM(Elaboratable):
 				with m.If(bus.complete):
 					m.d.sync += [
 						bus.cs.eq(0),
+						bus.copi_oe.eq(1),
 						self.dataIn.eq(bus.cipo),
 					]
 					m.d.comb += self.complete.eq(1)
