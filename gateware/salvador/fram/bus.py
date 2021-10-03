@@ -53,5 +53,8 @@ class Bus(Elaboratable):
 					m.next = 'SHIFT-L'
 			with m.State('FINISH'):
 				m.d.comb += self.complete.eq(1)
-				m.next = 'IDLE'
+				with m.If(self.begin):
+					m.next = 'SHIFT-START'
+				with m.Else():
+					m.next = 'IDLE'
 		return m
