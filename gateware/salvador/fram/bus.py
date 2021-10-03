@@ -1,5 +1,9 @@
 from nmigen import *
 
+__all__ = (
+	'Bus',
+)
+
 class Bus(Elaboratable):
 	def __init__(self, *, resource):
 		self._bus = resource
@@ -25,7 +29,6 @@ class Bus(Elaboratable):
 		with m.FSM(name = 'spi-fsm'):
 			with m.State('IDLE'):
 				with m.If(self.begin):
-					m.d.sync += bitCounter.eq(7)
 					m.next = 'SHIFT-START'
 			with m.State('SHIFT-START'):
 				m.d.sync += data.eq(self.copi)
@@ -41,12 +44,14 @@ class Bus(Elaboratable):
 			with m.State('SHIFT-H'):
 				m.d.sync += [
 					bus.clk.o.eq(1),
-					self.cipo.eq(self.cipo.shift_right(1)),
-					self.cipo[7].eq(bus.cipo.i),
+					self.cipo.eq(self.cipo.shift_left(1)),
+					self.cipo[0].eq(bus.cipo.i),
 				]
 				with m.If(bitCounter == 0):
-					m.d.comb += self.complete.eq(1)
-					m.next = 'IDLE'
+					m.next = 'FINISH'
 				with m.Else():
 					m.next = 'SHIFT-L'
+			with m.State('FINISH'):
+				m.d.comb += self.complete.eq(1)
+				m.next = 'IDLE'
 		return m
