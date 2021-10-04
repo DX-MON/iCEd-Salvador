@@ -79,7 +79,36 @@ class DALI(Elaboratable):
 			# Spin until we get a valid command
 			with m.State('IDLE'):
 				with m.If(serial.dataAvailable):
+					m.next = 'ADDRESS'
+			# Decode the address for what we've just been sent
+			with m.State('ADDRESS'):
+				# If it's a normal request
+				with m.If(~address[7]):
+					# And is for our short address
+					with m.If(address[1:7] == shortAddress):
+						m.next = 'DISPATCH'
+					with m.Else():
+						m.next = 'IDLE'
+				# If we're being group addressed
+				with m.Elif(address[5:8] == 0b100):
+					# If it's for a group we're in
+					with m.If(group.bit_select(address[1:5], 1)):
+						m.next = 'DISPATCH'
+					with m.Else():
+						m.next = 'IDLE'
+				# If it's a broadcast command
+				with m.Elif(address[1:8] == 0b111_1111):
+					m.next = 'DISPATCH'
+				# Else if this is a special command
+				with m.Else():
+					m.next = 'DECODE-SPECIAL'
+			# Determine if the request was a power control request or a command
+			with m.State('DISPATCH'):
+				with m.If(address[0]):
 					m.next = 'DECODE'
+				with m.Else():
+					# Actually needs to be level control logic..
+					m.next = 'IDLE'
 			# Decode the command we've been sent
 			with m.State('DECODE'):
 				m.d.sync += [
@@ -228,6 +257,11 @@ class DALI(Elaboratable):
 						m.next = 'IDLE'
 					with m.Default():
 						m.next = 'IDLE'
+			# Handle special commands
+			with m.State('DECODE-SPECIAL'):
+				with m.If(address == 0b1010_0011):
+					m.d.sync += dtr.eq(commandBits)
+				m.next = 'IDLE'
 			# Resync with the TX completing
 			with m.State('WAIT'):
 				with m.If(serial.sendComplete):
