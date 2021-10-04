@@ -1,5 +1,6 @@
 from arachne.core.sim import sim_case
 from nmigen import Record
+from nmigen.build import Resource, Subsignal, Pins
 from nmigen.hdl.rec import DIR_FANIN, DIR_FANOUT
 from nmigen.sim import *
 
@@ -7,6 +8,7 @@ from ...dali.dali import *
 
 __all__ = (
 	'deviceAndVersion',
+	'setAndQueryLevels',
 )
 
 fram_spi = Record(
@@ -79,8 +81,9 @@ def sendCommand(command, *, interface, clkFreq, bitRate):
 	yield from waitBitTime(clkFreq, bitRate)
 	yield from waitBitTime(clkFreq, bitRate)
 
-def recvResponse(*, interface, clkFreq, bitRate):
+def recvResponse(*, interface, clkFreq, bitRate) -> int:
 	# Wait for processing
+	yield
 	yield
 	yield
 	# Check the dut generates the correct start bit
@@ -120,10 +123,54 @@ def deviceAndVersion(sim : Simulator, dut):
 		# Check the device answered with 6 (LED)
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 6
 		yield
+		# Broadcast "Query Version Number"
+		yield from sendCommand(0b1111_1111_1001_0111, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 1
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 1
+		yield
 		# Broadcast "Query Extended Version Number"
 		yield from sendCommand(0b1111_1111_1111_1111, interface = interface, clkFreq = 16e6, bitRate = bitRate)
 		# Check the device answered with 1
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 1
+		yield
+
+		yield from waitBitTime(16e6, bitRate)
+
+	yield domainSync, 'sync'
+
+@sim_case(domains = (('sync', 16e6),),
+	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
+	platform = Platform())
+def setAndQueryLevels(sim : Simulator, dut):
+	bitRate = 2400
+	interface = dut._interface
+
+	def domainSync():
+		yield interface.rx.i.eq(1)
+		yield Settle()
+		yield from waitBitTime(16e6, bitRate)
+		# Send "Download to DTR" w/ payload of 254
+		yield from sendCommand(0b1010_0011_1111_1110, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		yield
+		# Broadcast "Store DTR as Max Level"
+		yield from sendCommand(0b1111_1111_0010_1010, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		yield
+		# Broadcast "Query Min Level"
+		yield from sendCommand(0b1111_1111_1010_0001, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 254
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 254
+		yield
+		# Send "Download to DTR" w/ payload of 6
+		yield from sendCommand(0b1010_0011_0000_0110, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		yield
+		# Broadcast "Store DTR as Min Level"
+		yield from sendCommand(0b1111_1111_0010_1011, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		yield
+		# Broadcast "Query Min Level"
+		yield from sendCommand(0b1111_1111_1010_0010, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 6
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 6
+		yield
 
 		yield from waitBitTime(16e6, bitRate)
 
