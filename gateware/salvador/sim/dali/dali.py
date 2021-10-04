@@ -8,6 +8,7 @@ from ...dali.dali import *
 
 __all__ = (
 	'deviceAndVersion',
+	'addressing',
 	'setAndQueryLevels',
 )
 
@@ -107,6 +108,16 @@ def recvResponse(*, interface, clkFreq, bitRate) -> int:
 	yield from waitBitTime(clkFreq, bitRate)
 	return response
 
+def validateIdle(*, interface, clkFreq, bitRate):
+	# Wait for processing
+	yield
+	yield
+	# Check that the dut *does not* generate a start bit
+	assert (yield interface.tx.o) == 1
+	yield from waitBitTime(clkFreq, bitRate)
+	assert (yield interface.tx.o) == 1
+	yield from waitBitTime(clkFreq, bitRate)
+
 @sim_case(domains = (('sync', 16e6),),
 	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
 	platform = Platform())
@@ -133,7 +144,6 @@ def deviceAndVersion(sim : Simulator, dut):
 		# Check the device answered with 1
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 1
 		yield
-
 		yield from waitBitTime(16e6, bitRate)
 
 	yield domainSync, 'sync'
@@ -171,7 +181,37 @@ def setAndQueryLevels(sim : Simulator, dut):
 		# Check the device answered with 6
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 6
 		yield
+		yield from waitBitTime(16e6, bitRate)
 
+	yield domainSync, 'sync'
+
+@sim_case(domains = (('sync', 16e6),),
+	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
+	platform = Platform())
+def addressing(sim : Simulator, dut):
+	bitRate = 2400
+	interface = dut._interface
+
+	def domainSync():
+		yield interface.rx.i.eq(1)
+		yield Settle()
+		yield from waitBitTime(16e6, bitRate)
+		# Send "Query Device Type" to device 10
+		yield from sendCommand(0b0001_0101_1001_1001, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		yield
+		yield from validateIdle(interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Send "Query Device Type" to group 10
+		yield from sendCommand(0b1001_0101_1001_1001, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		yield
+		yield from validateIdle(interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Broadcast "Add To Group" for group 10
+		yield from sendCommand(0b1111_1111_0110_1010, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		yield
+		# Send "Query Device Type" to group 10
+		yield from sendCommand(0b1001_0101_1001_1001, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 6 (LED)
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 6
+		yield
 		yield from waitBitTime(16e6, bitRate)
 
 	yield domainSync, 'sync'
