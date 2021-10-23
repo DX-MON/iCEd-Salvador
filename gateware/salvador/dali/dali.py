@@ -47,7 +47,7 @@ class DALI(Elaboratable):
 		searchAddress = Signal(24)
 		randomAddress = Signal(24)
 		group = Signal(16)
-		scene = Array(Signal(8) for _ in range(16))
+		scene = Array(Signal(8, name = f'scene{i}') for i in range(16))
 		status = Signal(8)
 		dtr = Signal(8)
 		dtr1 = Signal(8)
