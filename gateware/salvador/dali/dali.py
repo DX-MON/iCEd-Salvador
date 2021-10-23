@@ -279,6 +279,20 @@ class DALI(Elaboratable):
 						m.d.sync += persistMemory.dataOut.eq(maxLevel)
 					with m.Case(DALICommand.dtrToMinLevel):
 						m.d.sync += persistMemory.dataOut.eq(minLevel)
+					with m.Case(DALICommand.dtrToFailureLevel):
+						m.d.sync += persistMemory.dataOut.eq(failureLevel)
+					with m.Case(DALICommand.dtrToOnLevel):
+						m.d.sync += persistMemory.dataOut.eq(onLevel)
+					with m.Case(DALICommand.dtrToFadeTime):
+						m.d.sync += persistMemory.dataOut.eq(fadeTime)
+					with m.Case(DALICommand.dtrToFadeRate):
+						m.d.sync += persistMemory.dataOut.eq(fadeRate)
+					with m.Case(DALICommand.dtrToScene, DALICommand.removeFromScene):
+						m.d.sync += persistMemory.dataOut.eq(scene[commandData])
+					with m.Case(DALICommand.addToGroup, DALICommand.removeFromGroup):
+						m.d.sync += persistMemory.dataOut.eq(group.bit_select(commandData[3:], 8))
+					with m.Case(DALICommand.dtrToShortAddress):
+						m.d.sync += persistMemory.dataOut.eq(shortAddress)
 					with m.Default():
 						# ERROR..
 						m.next = 'IDLE'
