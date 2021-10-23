@@ -5,11 +5,13 @@ from nmigen.hdl.rec import DIR_FANIN, DIR_FANOUT
 from nmigen.sim import *
 
 from ...dali.dali import *
+from ...fram.fram import Opcodes as FRAMOpcodes
 
 __all__ = (
 	'deviceAndVersion',
 	'addressing',
 	'setAndQueryLevels',
+	'startupRead'
 )
 
 fram_spi = Record(
@@ -121,7 +123,7 @@ def validateIdle(*, interface, clkFreq, bitRate):
 @sim_case(domains = (('sync', 16e6),),
 	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
 	platform = Platform())
-def deviceAndVersion(sim : Simulator, dut):
+def deviceAndVersion(sim : Simulator, dut : DALI):
 	bitRate = 2400
 	interface = dut._interface
 
@@ -145,13 +147,12 @@ def deviceAndVersion(sim : Simulator, dut):
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 1
 		yield
 		yield from waitBitTime(16e6, bitRate)
-
 	yield domainSync, 'sync'
 
 @sim_case(domains = (('sync', 16e6),),
 	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
 	platform = Platform())
-def setAndQueryLevels(sim : Simulator, dut):
+def setAndQueryLevels(sim : Simulator, dut : DALI):
 	bitRate = 2400
 	interface = dut._interface
 
@@ -165,7 +166,7 @@ def setAndQueryLevels(sim : Simulator, dut):
 		# Broadcast "Store DTR as Max Level"
 		yield from sendCommand(0b1111_1111_0010_1010, interface = interface, clkFreq = 16e6, bitRate = bitRate)
 		yield
-		# Broadcast "Query Min Level"
+		# Broadcast "Query Max Level"
 		yield from sendCommand(0b1111_1111_1010_0001, interface = interface, clkFreq = 16e6, bitRate = bitRate)
 		# Check the device answered with 254
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 254
@@ -182,13 +183,12 @@ def setAndQueryLevels(sim : Simulator, dut):
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 6
 		yield
 		yield from waitBitTime(16e6, bitRate)
-
 	yield domainSync, 'sync'
 
 @sim_case(domains = (('sync', 16e6),),
 	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
 	platform = Platform())
-def addressing(sim : Simulator, dut):
+def addressing(sim : Simulator, dut : DALI):
 	bitRate = 2400
 	interface = dut._interface
 
@@ -213,5 +213,102 @@ def addressing(sim : Simulator, dut):
 		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 6
 		yield
 		yield from waitBitTime(16e6, bitRate)
+	yield domainSync, 'sync'
 
+@sim_case(domains = (('sync', 1e6),),
+	dut = DALI(interface = interface, deviceType = DeviceType.led, persistResource = ('fram', 0)),
+	platform = Platform())
+def startupRead(sim : Simulator, dut : DALI):
+	bitRate = 2400
+	interface = dut._interface
+
+	def readSPI():
+		result = 0
+		for i in range(8):
+			yield
+			yield Settle()
+			assert (yield fram_spi.clk.o) == 0
+			yield
+			yield Settle()
+			assert (yield fram_spi.clk.o) == 1
+			result <<= 1
+			result |= (yield fram_spi.copi.o)
+		return result
+
+	def writeSPI(*, data):
+		for i in range(8):
+			yield
+			yield Settle()
+			assert (yield fram_spi.clk.o) == 0
+			bit = (data >> (7 - i)) & 1
+			yield fram_spi.cipo.i.eq(bit)
+			yield
+			yield Settle()
+			assert (yield fram_spi.clk.o) == 1
+
+	def writeAddress(*, addr):
+		yield
+		yield Settle()
+		assert (yield fram_spi.cs.o) == 1
+		yield
+		yield
+		assert (yield from readSPI()) == FRAMOpcodes.read
+		yield
+		yield
+		assert (yield from readSPI()) == (addr >> 8)
+		yield
+		yield
+		assert (yield from readSPI()) == (addr & 0xFF)
+		yield
+		yield
+		yield from writeSPI(data = addr + 5)
+		yield
+		yield Settle()
+		assert (yield fram_spi.cs.o) == 0
+		yield
+
+	def domainSync():
+		yield interface.rx.i.eq(1)
+		yield Settle()
+		for i in range(25):
+			yield from writeAddress(addr = i)
+		yield from waitBitTime(1e6, bitRate)
+		# Broadcast "Query Max Level"
+		yield from sendCommand(0b1111_1111_1010_0001, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 5
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 5
+		# Broadcast "Query Min Level"
+		yield from sendCommand(0b1111_1111_1010_0010, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 6
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 6
+		# Broadcast "Query On Level"
+		yield from sendCommand(0b1111_1111_1010_0011, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 8
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 8
+		# Broadcast "Query Failure Level"
+		yield from sendCommand(0b1111_1111_1010_0100, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 7
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 7
+		# Broadcast "Query Failure Level"
+		yield from sendCommand(0b1111_1111_1010_0101, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 0x9A
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 0x9A
+		for scene in range(16):
+			# Broadcast "Query Scene Level N"
+			yield from sendCommand(0b1111_1111_1011_0000 + scene, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+			# Check the device answered with B + scene
+			assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 0xB + scene
+		# Broadcast "Query Group 0_7"
+		yield from sendCommand(0b1111_1111_1100_0000, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 1B
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 0x1B
+		# Broadcast "Query Group 8_15"
+		yield from sendCommand(0b1111_1111_1100_0001, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 1C
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 0x1C
+		# Send "Query Short Address"
+		yield from sendCommand(0b1011_1011_0000_0000, interface = interface, clkFreq = 16e6, bitRate = bitRate)
+		# Check the device answered with 1D
+		assert (yield from recvResponse(interface = interface, clkFreq = 16e6, bitRate = bitRate)) == 0x1D
+		yield from waitBitTime(1e6, bitRate)
 	yield domainSync, 'sync'
