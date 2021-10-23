@@ -266,7 +266,12 @@ class DALI(Elaboratable):
 			with m.State('DECODE-SPECIAL'):
 				with m.If(address == 0b1010_0011):
 					m.d.sync += dtr.eq(commandBits)
-				m.next = 'IDLE'
+					m.next = 'IDLE'
+				with m.Elif((address == 0b1011_1011) & (commandBits == 0)):
+					self.sendRegister(m, response, serial, shortAddress)
+					m.next = 'WAIT'
+				with m.Else():
+					m.next = 'IDLE'
 			# Resync with the TX completing
 			with m.State('WAIT'):
 				with m.If(serial.sendComplete):
