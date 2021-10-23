@@ -28,6 +28,8 @@ class DALI(Elaboratable):
 		m.submodules.persistMemory = persistMemory = FRAM(resourceName = self._persistResource)
 		interface = self._interface
 
+		readAddress = Signal(11)
+
 		address = Signal(8)
 		commandBits = Signal(8)
 		command = Signal.like(decoder.command)
@@ -73,6 +75,9 @@ class DALI(Elaboratable):
 		]
 
 		with m.FSM(name = 'dali-fsm'):
+			with m.State('STARTUP'):
+				m.d.sync += readAddress.eq(0)
+				m.next = 'BEGIN-READ'
 			with m.State('RESET'):
 				m.d.sync += allowMemoryWrite.eq(0)
 				m.next = 'IDLE'
@@ -282,6 +287,54 @@ class DALI(Elaboratable):
 			with m.State('WRITEBACK-WAIT'):
 				with m.If(persistMemory.complete):
 					m.next = 'IDLE'
+			# These two states are at the bottom as they make use of the writeback information created above
+			with m.State('BEGIN-READ'):
+				with m.If(readAddress == self._framNextAddr):
+					m.next = 'IDLE'
+				with m.Else():
+					m.d.sync += persistMemory.address.eq(readAddress)
+					m.d.comb += persistMemory.read.eq(1)
+					sceneAddress = self.mapRegister(scene)
+					groupAddress = self.mapRegister(group)
+					with m.If((readAddress >= sceneAddress) & (readAddress < sceneAddress + len(scene))):
+						m.d.sync += commandData.eq(readAddress - sceneAddress)
+					with m.Elif((readAddress >= groupAddress) & (readAddress < groupAddress + (len(group) // 8))):
+						m.d.sync += commandData.eq(readAddress - groupAddress)
+					m.next = 'WAIT-READ'
+			with m.State('WAIT-READ'):
+				with m.If(persistMemory.complete):
+					m.next = 'STORE-READ'
+			with m.State('STORE-READ'):
+					for regName, addr in self._framMap.items():
+						if regName == maxLevel.name:
+							with m.If(readAddress == addr):
+								m.d.sync += maxLevel.eq(persistMemory.dataIn)
+						elif regName == minLevel.name:
+							with m.Elif(readAddress == addr):
+								m.d.sync += minLevel.eq(persistMemory.dataIn)
+						elif regName == failureLevel.name:
+							with m.Elif(readAddress == addr):
+								m.d.sync += failureLevel.eq(persistMemory.dataIn)
+						elif regName == onLevel.name:
+							with m.Elif(readAddress == addr):
+								m.d.sync += onLevel.eq(persistMemory.dataIn)
+						elif regName == fadeTime.name:
+							with m.Elif(readAddress == addr):
+								m.d.sync += fadeTime.eq(persistMemory.dataIn)
+						elif regName == fadeRate.name:
+							with m.Elif(readAddress == addr):
+								m.d.sync += fadeRate.eq(persistMemory.dataIn)
+						elif regName == scene._inner[0].name:
+							with m.Elif((readAddress >= addr) & (readAddress < addr + len(scene))):
+								m.d.sync += scene[commandData].eq(persistMemory.dataIn)
+						elif regName == group.name:
+							with m.Elif((readAddress >= addr) & (readAddress < addr + (len(group) // 8))):
+								m.d.sync += group.bit_select(commandData * 8, 8).eq(persistMemory.dataIn)
+						elif regName == shortAddress.name:
+							with m.Elif(readAddress == addr):
+								m.d.sync += shortAddress.eq(persistMemory.dataIn)
+					m.d.sync += readAddress.eq(readAddress + 1)
+					m.next = 'BEGIN-READ'
 
 		return m
 
